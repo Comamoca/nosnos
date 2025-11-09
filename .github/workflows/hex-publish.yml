@@ -22,7 +22,6 @@ jobs:
         with:
           elixir-version: '1.18.0'
           otp-version: '27.2'
-          zig-version: '0.15.2'
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
@@ -35,6 +34,9 @@ jobs:
 
       - name: Install dependencies
         run: mix deps.get
+
+      - name: Install Zig for Zigler
+        run: mix zig.get
 
       - name: Run tests
         run: mix test
