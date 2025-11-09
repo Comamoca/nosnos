@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://emoji2svg.deno.dev/api/⚡" alt="eyecatch" height="100">
+
 # Nosnos
 
 🔐 High-performance Nostr cryptographic operations library for Elixir
@@ -11,11 +13,10 @@
 
 </div>
 
-<img src="https://emoji2svg.deno.dev/api/⚡" alt="eyecatch" height="100">
 
 ## 🔥 Features
 
-Nosnos is a Elixir library implementing **BIP-340 Schnorr signatures** and **Nostr protocol (NIP-01)** cryptographic operations using Zig NIFs.
+Nosnos is a Elixir library implementing **BIP-340 Schnorr signatures** and **Nostr protocol (NIP-01)** cryptographic operations using Zig NIFs for performance.
 
 ## 🚀 How to use
 
