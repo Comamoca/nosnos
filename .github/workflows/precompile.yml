@@ -20,16 +20,15 @@ jobs:
       matrix:
         job:
           # Linux GNU
-          - { target: x86_64-linux-gnu, os: ubuntu-20.04, use-cross: false }
-          - { target: aarch64-linux-gnu, os: ubuntu-20.04, use-cross: true }
-          - { target: arm-linux-gnueabihf, os: ubuntu-20.04, use-cross: true }
+          - { target: x86_64-linux-gnu, os: ubuntu-latest, use-cross: false }
+          - { target: aarch64-linux-gnu, os: ubuntu-latest, use-cross: true }
+          - { target: arm-linux-gnueabihf, os: ubuntu-latest, use-cross: true }
 
           # Linux musl
-          - { target: x86_64-linux-musl, os: ubuntu-20.04, use-cross: true }
-          - { target: aarch64-linux-musl, os: ubuntu-20.04, use-cross: true }
+          - { target: x86_64-linux-musl, os: ubuntu-latest, use-cross: true }
+          - { target: aarch64-linux-musl, os: ubuntu-latest, use-cross: true }
 
           # macOS
-          - { target: x86_64-macos-none, os: macos-12, use-cross: false }
           - { target: aarch64-macos-none, os: macos-14, use-cross: false }
 
     steps:
