@@ -1,0 +1,183 @@
+name: Build Precompiled NIFs
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 0.2.0)'
+        required: true
+        default: '0.2.0'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.job.target }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          # Linux GNU
+          - { target: x86_64-linux-gnu, os: ubuntu-20.04, use-cross: false }
+          - { target: aarch64-linux-gnu, os: ubuntu-20.04, use-cross: true }
+          - { target: arm-linux-gnueabihf, os: ubuntu-20.04, use-cross: true }
+
+          # Linux musl
+          - { target: x86_64-linux-musl, os: ubuntu-20.04, use-cross: true }
+          - { target: aarch64-linux-musl, os: ubuntu-20.04, use-cross: true }
+
+          # macOS
+          - { target: x86_64-macos-none, os: macos-12, use-cross: false }
+          - { target: aarch64-macos-none, os: macos-14, use-cross: false }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.18.0'
+          otp-version: '27.2'
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build (Linux with cross-compilation)
+        if: matrix.job.use-cross && contains(matrix.job.target, 'linux')
+        run: |
+          # Install cross-compilation tools
+          case "${{ matrix.job.target }}" in
+            aarch64-linux-gnu)
+              sudo apt-get update
+              sudo apt-get install -y gcc-aarch64-linux-gnu
+              ;;
+            arm-linux-gnueabihf)
+              sudo apt-get update
+              sudo apt-get install -y gcc-arm-linux-gnueabihf
+              ;;
+            *-musl)
+              # For musl, we'll use zig cc
+              ;;
+          esac
+
+          # Build with Zig cross-compilation
+          MIX_ENV=prod mix compile
+
+      - name: Build (native)
+        if: ${{ !matrix.job.use-cross }}
+        run: MIX_ENV=prod mix compile
+
+      - name: Package precompiled NIF
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          TARGET="${{ matrix.job.target }}"
+
+          # Find the compiled .so file
+          SO_FILE=$(find _build/prod -name "Elixir.Nosnos.so" -o -name "Elixir.Nosnos.dll" | head -1)
+
+          if [ -z "$SO_FILE" ]; then
+            echo "Error: Could not find compiled library"
+            exit 1
+          fi
+
+          # Determine extension
+          case "${{ matrix.job.os }}" in
+            windows-*) EXT="dll" ;;
+            *) EXT="so" ;;
+          esac
+
+          # Create output directory
+          mkdir -p artifacts
+
+          # Copy and rename
+          OUTPUT="artifacts/nosnos.${VERSION}.${TARGET}.${EXT}"
+          cp "$SO_FILE" "$OUTPUT"
+
+          # Generate checksum
+          if command -v shasum &> /dev/null; then
+            shasum -a 256 "$OUTPUT" | awk '{print $1}' > "$OUTPUT.sha256"
+          else
+            sha256sum "$OUTPUT" | awk '{print $1}' > "$OUTPUT.sha256"
+          fi
+
+          echo "Built: $OUTPUT"
+          echo "SHA256: $(cat $OUTPUT.sha256)"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nosnos-${{ matrix.job.target }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -name "*.so" -o -name "*.dll" | while read file; do
+            cp "$file" release/
+            cp "$file.sha256" release/ 2>/dev/null || true
+          done
+          ls -lh release/
+
+      - name: Generate checksums file
+        run: |
+          cd release
+          echo "# Checksums for precompiled NIFs" > CHECKSUMS.txt
+          echo "" >> CHECKSUMS.txt
+          for file in *.sha256; do
+            base=$(basename "$file" .sha256)
+            target=$(echo "$base" | sed 's/nosnos\.[0-9.]*\.\(.*\)\..*/\1/')
+            sha=$(cat "$file")
+            echo "\"$target\": \"$sha\"," >> CHECKSUMS.txt
+          done
+          cat CHECKSUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          body_path: release/CHECKSUMS.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

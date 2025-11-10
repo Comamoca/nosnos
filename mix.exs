@@ -1,16 +1,31 @@
 defmodule Nosnos.MixProject do
   use Mix.Project
 
+  @version "0.2.0"
+  @source_url "https://github.com/Comamoca/nosnos"
+
+  # Precompiled NIF configuration
+  @lib_address "https://github.com/Comamoca/nosnos/releases/download/v#{@version}/nosnos.#VERSION.#TRIPLE.#EXT"
+
+  # SHA256 checksums for precompiled binaries
+  # These will be filled in after the first release build
+  @shasum []
+
   def project do
     [
       app: :nosnos,
-      version: "0.2.0",
+      version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: description(),
       package: package(),
-      source_url: "https://github.com/Comamoca/nosnos"
+      source_url: @source_url,
+      nosnos: [
+        version: @version,
+        lib_address: @lib_address,
+        shasum: @shasum
+      ]
     ]
   end
 

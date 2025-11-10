@@ -19,8 +19,17 @@ defmodule Nosnos do
   - Signatures are non-deterministic for enhanced security against side-channel attacks
   """
 
+  # Precompiled configuration
+  # To enable precompiled binaries, update @shasum in mix.exs with checksums
+  # from the GitHub release after building with scripts/build_precompiled.sh
+  #
+  # For now, precompiled is disabled (@shasum is empty)
+  # After first release, uncomment the precompiled option and add checksums
+
   use Zig,
     otp_app: :nosnos
+    # Uncomment after first release with precompiled binaries:
+    # precompiled: {:web, @lib_address, @shasum}
 
   ~Z"""
   const std = @import("std");
