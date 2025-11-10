@@ -43,8 +43,7 @@ defmodule Nosnos do
       return buf;
   }
 
-  /// Derives a secp256k1 public key from a 32-byte secret key.
-  /// Returns the X coordinate of the public key point (32 bytes).
+  /// nif: get_public_key/1 dirty_cpu
   pub fn get_public_key(secret_key: [32]u8) ![32]u8 {
       const sk = try Scalar.fromBytes(secret_key, .big);
       const P = try Secp256k1.basePoint.mul(sk.toBytes(.big), .big);
@@ -52,8 +51,7 @@ defmodule Nosnos do
       return coords.x.toBytes(.big);
   }
 
-  /// Signs a 32-byte message using BIP-340 Schnorr signature scheme.
-  /// Returns a 64-byte signature (R || s).
+  /// nif: sign/2 dirty_cpu
   pub fn sign(secret_key: [32]u8, msg: [32]u8) ![64]u8 {
       const sk_scalar = try Scalar.fromBytes(secret_key, .big);
       const P = try Secp256k1.basePoint.mul(sk_scalar.toBytes(.big), .big);
@@ -115,8 +113,7 @@ defmodule Nosnos do
       return signature;
   }
 
-  /// Verifies a BIP-340 Schnorr signature.
-  /// Returns true if the signature is valid, false otherwise.
+  /// nif: verify/3 dirty_cpu
   pub fn verify(public_key: [32]u8, msg: [32]u8, signature: [64]u8) !bool {
       const Px = try Secp256k1.Fe.fromBytes(public_key, .big);
       const Py = try Secp256k1.recoverY(Px, false);
@@ -144,8 +141,7 @@ defmodule Nosnos do
       return true;
   }
 
-  /// Calculates a Nostr event ID from event components.
-  /// Returns a 32-byte SHA256 hash of the serialized event.
+  /// nif: calculate_event_id/5
   pub fn calculate_event_id(pubkey: []const u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8) ![32]u8 {
       const allocator = beam.allocator;
 
@@ -193,8 +189,7 @@ defmodule Nosnos do
       return id;
   }
 
-  /// Signs a complete Nostr event and returns all event fields.
-  /// Returns a map with keys: id, pubkey, created_at, kind, tags, content, sig.
+  /// nif: sign_event/5 dirty_cpu
   pub fn sign_event(secret_key: [32]u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8) !beam.term {
       const public_key_bytes = try get_public_key(secret_key);
 
@@ -230,39 +225,24 @@ defmodule Nosnos do
       }, .{});
   }
 
-  /// Verifies a Nostr event signature.
-  /// Takes a map with keys: id, pubkey, created_at, kind, tags, content, sig.
-  /// Returns true if the signature is valid, false otherwise.
-  pub fn verify_event(event: beam.term) !bool {
-      const EventMap = struct {
-          id: []const u8,
-          pubkey: []const u8,
-          created_at: i64,
-          kind: i64,
-          tags: []const u8,
-          content: []const u8,
-          sig: []const u8,
-      };
-
-      // Extract fields from event map
-      const ev = try beam.get(EventMap, event, .{});
-
+  /// nif: verify_event/7 dirty_cpu
+  pub fn verify_event(id: []const u8, pubkey: []const u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8, sig: []const u8) !bool {
       // Recalculate event ID
-      const calculated_id = try calculate_event_id(ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content);
+      const calculated_id = try calculate_event_id(pubkey, created_at, kind, tags, content);
 
       // Convert hex strings to bytes
       var bytes_pk: [32]u8 = undefined;
-      _ = try std.fmt.hexToBytes(&bytes_pk, ev.pubkey);
+      _ = try std.fmt.hexToBytes(&bytes_pk, pubkey);
 
       var bytes_sig: [64]u8 = undefined;
-      _ = try std.fmt.hexToBytes(&bytes_sig, ev.sig);
+      _ = try std.fmt.hexToBytes(&bytes_sig, sig);
 
       // Convert calculated ID to hex for comparison
       var id_hex: [64]u8 = undefined;
       _ = try std.fmt.bufPrint(&id_hex, "{s}", .{std.fmt.bytesToHex(&calculated_id, .lower)});
 
       // Verify ID matches
-      if (!std.mem.eql(u8, ev.id, &id_hex)) {
+      if (!std.mem.eql(u8, id, &id_hex)) {
           return false;
       }
 
@@ -271,6 +251,172 @@ defmodule Nosnos do
   }
   """
 
-  # Note: Documentation is generated from the Zig code comments above
-  # The following functions are NIFs that will be replaced by Zigler at compile time
+  @doc """
+  Derives a secp256k1 public key from a 32-byte secret key.
+
+  Returns the X coordinate of the public key point (32 bytes).
+
+  ## Parameters
+
+    * `secret_key` - A 32-byte binary containing the secret key
+
+  ## Examples
+
+      iex> secret_key = Base.decode16!("037ED39E07FEC9741B4133E3560A5188A1B6EDA007817E319C79A5F425530280", case: :mixed)
+      iex> public_key = Nosnos.get_public_key(secret_key)
+      iex> byte_size(public_key)
+      32
+
+  """
+  @spec get_public_key(secret_key :: binary()) :: binary()
+  def get_public_key(secret_key)
+  def get_public_key(_secret_key), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Signs a 32-byte message using BIP-340 Schnorr signature scheme.
+
+  Returns a 64-byte signature (R || s).
+
+  ## Parameters
+
+    * `secret_key` - A 32-byte binary containing the secret key
+    * `msg` - A 32-byte binary message to sign (typically a SHA256 hash)
+
+  ## Examples
+
+      iex> secret_key = :crypto.strong_rand_bytes(32)
+      iex> msg = :crypto.hash(:sha256, "test message")
+      iex> signature = Nosnos.sign(secret_key, msg)
+      iex> byte_size(signature)
+      64
+
+  """
+  @spec sign(secret_key :: binary(), msg :: binary()) :: binary()
+  def sign(secret_key, msg)
+  def sign(_secret_key, _msg), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Verifies a BIP-340 Schnorr signature.
+
+  Returns `true` if the signature is valid, `false` otherwise.
+
+  ## Parameters
+
+    * `public_key` - A 32-byte binary containing the public key
+    * `msg` - A 32-byte binary message that was signed
+    * `signature` - A 64-byte binary signature to verify
+
+  ## Examples
+
+      iex> secret_key = :crypto.strong_rand_bytes(32)
+      iex> public_key = Nosnos.get_public_key(secret_key)
+      iex> msg = :crypto.hash(:sha256, "test")
+      iex> signature = Nosnos.sign(secret_key, msg)
+      iex> Nosnos.verify(public_key, msg, signature)
+      true
+
+  """
+  @spec verify(public_key :: binary(), msg :: binary(), signature :: binary()) :: boolean()
+  def verify(public_key, msg, signature)
+  def verify(_public_key, _msg, _signature), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Calculates a Nostr event ID from event components.
+
+  Returns a 32-byte SHA256 hash of the serialized event.
+
+  ## Parameters
+
+    * `pubkey` - Hex-encoded public key string (64 characters)
+    * `created_at` - Unix timestamp (integer)
+    * `kind` - Event kind (integer, typically 1 for text notes)
+    * `tags` - JSON string representing tags array (e.g., `"[]"` or `"[[\\"e\\",\\"event_id\\"]]"`)
+    * `content` - Event content string
+
+  ## Examples
+
+      iex> pubkey = "132fc0db6c5946dabd675914603840bf3042e5b6d1cd1865be73c9cf8fd38e8d"
+      iex> event_id = Nosnos.calculate_event_id(pubkey, 1700000000, 1, "[]", "test")
+      iex> byte_size(event_id)
+      32
+
+  """
+  @spec calculate_event_id(
+          pubkey :: String.t(),
+          created_at :: integer(),
+          kind :: integer(),
+          tags :: String.t(),
+          content :: String.t()
+        ) :: binary()
+  def calculate_event_id(pubkey, created_at, kind, tags, content)
+  def calculate_event_id(_pubkey, _created_at, _kind, _tags, _content),
+    do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Signs a complete Nostr event and returns all event fields.
+
+  Returns a map with keys: `:id`, `:pubkey`, `:created_at`, `:kind`, `:tags`, `:content`, `:sig`.
+
+  ## Parameters
+
+    * `secret_key` - A 32-byte binary containing the secret key
+    * `created_at` - Unix timestamp (integer)
+    * `kind` - Event kind (integer, typically 1 for text notes)
+    * `tags` - JSON string representing tags array (e.g., `"[]"` or `"[[\\"e\\",\\"event_id\\"]]"`)
+    * `content` - Event content string
+
+  ## Examples
+
+      iex> secret_key = Base.decode16!("037ED39E07FEC9741B4133E3560A5188A1B6EDA007817E319C79A5F425530280", case: :mixed)
+      iex> event = Nosnos.sign_event(secret_key, 1700000000, 1, "[]", "Hello Nostr!")
+      iex> Map.keys(event) |> Enum.sort()
+      [:content, :created_at, :id, :kind, :pubkey, :sig, :tags]
+
+  """
+  @spec sign_event(
+          secret_key :: binary(),
+          created_at :: integer(),
+          kind :: integer(),
+          tags :: String.t(),
+          content :: String.t()
+        ) :: map()
+  def sign_event(secret_key, created_at, kind, tags, content)
+  def sign_event(_secret_key, _created_at, _kind, _tags, _content),
+    do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  Verifies a Nostr event signature.
+
+  Takes individual event fields as arguments and returns `true` if the signature is valid, `false` otherwise.
+
+  ## Parameters
+
+    * `id` - Hex-encoded event ID string (64 characters)
+    * `pubkey` - Hex-encoded public key string (64 characters)
+    * `created_at` - Unix timestamp (integer)
+    * `kind` - Event kind (integer)
+    * `tags` - JSON string representing tags array
+    * `content` - Event content string
+    * `sig` - Hex-encoded signature string (128 characters)
+
+  ## Examples
+
+      iex> secret_key = Base.decode16!("037ED39E07FEC9741B4133E3560A5188A1B6EDA007817E319C79A5F425530280", case: :mixed)
+      iex> event = Nosnos.sign_event(secret_key, 1700000000, 1, "[]", "test")
+      iex> Nosnos.verify_event(event.id, event.pubkey, event.created_at, event.kind, event.tags, event.content, event.sig)
+      true
+
+  """
+  @spec verify_event(
+          id :: String.t(),
+          pubkey :: String.t(),
+          created_at :: integer(),
+          kind :: integer(),
+          tags :: String.t(),
+          content :: String.t(),
+          sig :: String.t()
+        ) :: boolean()
+  def verify_event(id, pubkey, created_at, kind, tags, content, sig)
+  def verify_event(_id, _pubkey, _created_at, _kind, _tags, _content, _sig),
+    do: :erlang.nif_error(:nif_not_loaded)
 end

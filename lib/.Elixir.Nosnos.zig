@@ -21,8 +21,7 @@ fn taggedHash(tag: []const u8, msg: []const u8) [32]u8 {
     return buf;
 }
 
-/// Derives a secp256k1 public key from a 32-byte secret key.
-/// Returns the X coordinate of the public key point (32 bytes).
+/// nif: get_public_key/1 dirty_cpu
 pub fn get_public_key(secret_key: [32]u8) ![32]u8 {
     const sk = try Scalar.fromBytes(secret_key, .big);
     const P = try Secp256k1.basePoint.mul(sk.toBytes(.big), .big);
@@ -30,8 +29,7 @@ pub fn get_public_key(secret_key: [32]u8) ![32]u8 {
     return coords.x.toBytes(.big);
 }
 
-/// Signs a 32-byte message using BIP-340 Schnorr signature scheme.
-/// Returns a 64-byte signature (R || s).
+/// nif: sign/2 dirty_cpu
 pub fn sign(secret_key: [32]u8, msg: [32]u8) ![64]u8 {
     const sk_scalar = try Scalar.fromBytes(secret_key, .big);
     const P = try Secp256k1.basePoint.mul(sk_scalar.toBytes(.big), .big);
@@ -93,8 +91,7 @@ pub fn sign(secret_key: [32]u8, msg: [32]u8) ![64]u8 {
     return signature;
 }
 
-/// Verifies a BIP-340 Schnorr signature.
-/// Returns true if the signature is valid, false otherwise.
+/// nif: verify/3 dirty_cpu
 pub fn verify(public_key: [32]u8, msg: [32]u8, signature: [64]u8) !bool {
     const Px = try Secp256k1.Fe.fromBytes(public_key, .big);
     const Py = try Secp256k1.recoverY(Px, false);
@@ -122,8 +119,7 @@ pub fn verify(public_key: [32]u8, msg: [32]u8, signature: [64]u8) !bool {
     return true;
 }
 
-/// Calculates a Nostr event ID from event components.
-/// Returns a 32-byte SHA256 hash of the serialized event.
+/// nif: calculate_event_id/5
 pub fn calculate_event_id(pubkey: []const u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8) ![32]u8 {
     const allocator = beam.allocator;
 
@@ -171,8 +167,7 @@ pub fn calculate_event_id(pubkey: []const u8, created_at: i64, kind: i64, tags: 
     return id;
 }
 
-/// Signs a complete Nostr event and returns all event fields.
-/// Returns a map with keys: id, pubkey, created_at, kind, tags, content, sig.
+/// nif: sign_event/5 dirty_cpu
 pub fn sign_event(secret_key: [32]u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8) !beam.term {
     const public_key_bytes = try get_public_key(secret_key);
 
@@ -208,39 +203,24 @@ pub fn sign_event(secret_key: [32]u8, created_at: i64, kind: i64, tags: []const 
     }, .{});
 }
 
-/// Verifies a Nostr event signature.
-/// Takes a map with keys: id, pubkey, created_at, kind, tags, content, sig.
-/// Returns true if the signature is valid, false otherwise.
-pub fn verify_event(event: beam.term) !bool {
-    const EventMap = struct {
-        id: []const u8,
-        pubkey: []const u8,
-        created_at: i64,
-        kind: i64,
-        tags: []const u8,
-        content: []const u8,
-        sig: []const u8,
-    };
-
-    // Extract fields from event map
-    const ev = try beam.get(EventMap, event, .{});
-
+/// nif: verify_event/7 dirty_cpu
+pub fn verify_event(id: []const u8, pubkey: []const u8, created_at: i64, kind: i64, tags: []const u8, content: []const u8, sig: []const u8) !bool {
     // Recalculate event ID
-    const calculated_id = try calculate_event_id(ev.pubkey, ev.created_at, ev.kind, ev.tags, ev.content);
+    const calculated_id = try calculate_event_id(pubkey, created_at, kind, tags, content);
 
     // Convert hex strings to bytes
     var bytes_pk: [32]u8 = undefined;
-    _ = try std.fmt.hexToBytes(&bytes_pk, ev.pubkey);
+    _ = try std.fmt.hexToBytes(&bytes_pk, pubkey);
 
     var bytes_sig: [64]u8 = undefined;
-    _ = try std.fmt.hexToBytes(&bytes_sig, ev.sig);
+    _ = try std.fmt.hexToBytes(&bytes_sig, sig);
 
     // Convert calculated ID to hex for comparison
     var id_hex: [64]u8 = undefined;
     _ = try std.fmt.bufPrint(&id_hex, "{s}", .{std.fmt.bytesToHex(&calculated_id, .lower)});
 
     // Verify ID matches
-    if (!std.mem.eql(u8, ev.id, &id_hex)) {
+    if (!std.mem.eql(u8, id, &id_hex)) {
         return false;
     }
 
